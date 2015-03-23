@@ -9,8 +9,7 @@ object TagSoupFactoryAdapter
 {
     private val factory=new SAXFactoryImpl()
 
-    def get(): XMLLoader[Elem]=
-    {
+    def get(): XMLLoader[Elem] = {
         XML.withSAXParser(factory.newSAXParser())
     }
 }

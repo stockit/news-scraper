@@ -1,7 +1,7 @@
 package com.newsscraper.scraper.strategy
 
-import com.newsscraper.scraper.model.WebsiteData
+import com.newsscraper.scraper.model.{WebsitePageData}
 
 trait ScraperStrategy {
-    def crawl: WebsiteData
+    def crawl: WebsitePageData
 }

@@ -1,5 +1,14 @@
-import com.newsscraper.{Coffees, Suppliers, NewsScraper}
-import scala.concurrent.{Future, Await}
+
+import com.newsscraper.NewsScraper
+import com.newsscraper.scraper.model.link.ArchiveLinkData
+import com.newsscraper.scraper.model.page.NewsMaxPage
+import com.newsscraper.scraper.model.{WebsiteLinkData, WebsitePageData}
+import com.newsscraper.scraper.strategy.archive.ArchiveScraperStrategy
+import com.newsscraper.scraper.strategy.link.NewsMaxLinkScraperStrategy
+import com.newsscraper.scraper.strategy.page.NewsMaxPageScraperStrategy
+import com.newsscraper.table._
+import org.slf4j.LoggerFactory
+import scala.slick.jdbc.meta.MTable
 import slick.driver.MySQLDriver.simple._
 
 
@@ -8,178 +17,168 @@ import slick.driver.MySQLDriver.simple._
  */
 object Main {
 
-    def main(args: Array[String]): Unit ={
+    val sites: TableQuery[Sites] = TableQuery[Sites]
+    val articles: TableQuery[Articles] = TableQuery[Articles]
+    val links: TableQuery[Links] = TableQuery[Links]
+    val archives: TableQuery[Archives] = TableQuery[Archives]
+    val linkArchive: TableQuery[LinkArchive] = TableQuery[LinkArchive]
+    val linkArticle: TableQuery[LinkArticle] = TableQuery[LinkArticle]
 
+    val pageScraper = new NewsMaxPageScraperStrategy()
+
+    val logger = LoggerFactory.getLogger("Main")
+
+    def dropDatabases(): Unit = {
         val db = NewsScraper.stockitDatabase
-        // The query interface for the Suppliers table
-        val suppliers: TableQuery[Suppliers] = TableQuery[Suppliers]
 
-        // the query interface for the Coffees table
-        val coffees: TableQuery[Coffees] = TableQuery[Coffees]
-
-        // Create a connection (called a "session") to an in-memory H2 database
         db.withSession { implicit session =>
-
-            // Create the schema by combining the DDLs for the Suppliers and Coffees
-            // tables using the query interfaces
-            (suppliers.ddl ++ coffees.ddl).create
-
-
-            /* Create / Insert */
-
-            // Insert some suppliers
-            suppliers += (101, "Acme, Inc.", "99 Market Street", "Groundsville", "CA", "95199")
-            suppliers += ( 49, "Superior Coffee", "1 Party Place", "Mendocino", "CA", "95460")
-            suppliers += (150, "The High Ground", "100 Coffee Lane", "Meadows", "CA", "93966")
-
-            // Insert some coffees (using JDBC's batch insert feature)
-            val coffeesInsertResult: Option[Int] = coffees ++= Seq (
-                ("Colombian",         101, 7.99, 0, 0),
-                ("French_Roast",       49, 8.99, 0, 0),
-                ("Espresso",          150, 9.99, 0, 0),
-                ("Colombian_Decaf",   101, 8.99, 0, 0),
-                ("French_Roast_Decaf", 49, 9.99, 0, 0)
-            )
-
-            val allSuppliers: List[(Int, String, String, String, String, String)] =
-                suppliers.list
-
-            // Print the number of rows inserted
-            coffeesInsertResult foreach { numRows =>
-                println(s"Inserted $numRows rows into the Coffees table")
-            }
-
-
-            /* Read / Query / Select */
-
-            // Print the SQL for the Coffees query
-            println("Generated SQL for base Coffees query:\n" + coffees.selectStatement)
-
-            // Query the Coffees table using a foreach and print each row
-            coffees foreach { case (name, supID, price, sales, total) =>
-                println("  " + name + "\t" + supID + "\t" + price + "\t" + sales + "\t" + total)
-            }
-
-
-            /* Filtering / Where */
-
-            // Construct a query where the price of Coffees is > 9.0
-            val filterQuery: Query[Coffees, (String, Int, Double, Int, Int), Seq] =
-                coffees.filter(_.price > 9.0)
-
-            println("Generated SQL for filter query:\n" + filterQuery.selectStatement)
-
-            // Execute the query
-            println(filterQuery.list)
-
-
-            /* Update */
-
-            // Construct an update query with the sales column being the one to update
-            val updateQuery: Query[Column[Int], Int, Seq] = coffees.map(_.sales)
-
-            // Print the SQL for the Coffees update query
-            println("Generated SQL for Coffees update:\n" + updateQuery.updateStatement)
-
-            // Perform the update
-            val numUpdatedRows = updateQuery.update(1)
-
-            println(s"Updated $numUpdatedRows rows")
-
-
-            /* Delete */
-
-            // Construct a delete query that deletes coffees with a price less than 8.0
-            val deleteQuery: Query[Coffees,(String, Int, Double, Int, Int), Seq] =
-                coffees.filter(_.price < 8.0)
-
-            // Print the SQL for the Coffees delete query
-            println("Generated SQL for Coffees delete:\n" + deleteQuery.deleteStatement)
-
-            // Perform the delete
-            val numDeletedRows = deleteQuery.delete
-
-            println(s"Deleted $numDeletedRows rows")
-
-
-            /* Selecting Specific Columns */
-
-            // Construct a new coffees query that just selects the name
-            val justNameQuery: Query[Column[String], String, Seq] = coffees.map(_.name)
-
-            println("Generated SQL for query returning just the name:\n" +
-                justNameQuery.selectStatement)
-
-            // Execute the query
-            println(justNameQuery.list)
-
-
-            /* Sorting / Order By */
-
-            val sortByPriceQuery: Query[Coffees, (String, Int, Double, Int, Int), Seq] =
-                coffees.sortBy(_.price)
-
-            println("Generated SQL for query sorted by price:\n" +
-                sortByPriceQuery.selectStatement)
-
-            // Execute the query
-            println(sortByPriceQuery.list)
-
-
-            /* Query Composition */
-
-            val composedQuery: Query[Column[String], String, Seq] =
-                coffees.sortBy(_.name).take(3).filter(_.price > 9.0).map(_.name)
-
-            println("Generated SQL for composed query:\n" +
-                composedQuery.selectStatement)
-
-            // Execute the composed query
-            println(composedQuery.list)
-
-
-            /* Joins */
-
-            // Join the tables using the relationship defined in the Coffees table
-            val joinQuery: Query[(Column[String], Column[String]), (String, String), Seq] = for {
-                c <- coffees if c.price > 9.0
-                s <- c.supplier
-            } yield (c.name, s.name)
-
-            println("Generated SQL for the join query:\n" + joinQuery.selectStatement)
-
-            // Print the rows which contain the coffee name and the supplier name
-            println(joinQuery.list)
-
-
-            /* Computed Values */
-
-            // Create a new computed column that calculates the max price
-            val maxPriceColumn: Column[Option[Double]] = coffees.map(_.price).max
-
-            println("Generated SQL for max price column:\n" + maxPriceColumn.selectStatement)
-
-            // Execute the computed value query
-            println(maxPriceColumn.run)
-
-
-            /* Manual SQL / String Interpolation */
-
-            // Required import for the sql interpolator
-            import scala.slick.jdbc.StaticQuery.interpolation
-
-            // A value to insert into the statement
-            val state = "CA"
-
-            // Construct a SQL statement manually with an interpolated value
-            val plainQuery = sql"select SUP_NAME from SUPPLIERS where STATE = $state".as[String]
-
-            println("Generated SQL for plain query:\n" + plainQuery.getStatement)
-
-            // Execute the query
-            println(plainQuery.list)
-
+            if(!MTable.getTables(linkArchive.baseTableRow.tableName).list.isEmpty) linkArchive.ddl.drop
+            if(!MTable.getTables(linkArticle.baseTableRow.tableName).list.isEmpty) linkArticle.ddl.drop
         }
+
+        db.withSession { implicit session =>
+            if(!MTable.getTables(archives.baseTableRow.tableName).list.isEmpty) archives.ddl.drop
+        }
+
+        db.withSession { implicit session =>
+            if(!MTable.getTables(sites.baseTableRow.tableName).list.isEmpty) sites.ddl.drop
+            if(!MTable.getTables(articles.baseTableRow.tableName).list.isEmpty) articles.ddl.drop
+            if(!MTable.getTables(links.baseTableRow.tableName).list.isEmpty) links.ddl.drop
+        }
+
+    }
+
+    def createDatabases(): Unit = {
+        val db = NewsScraper.stockitDatabase
+
+        db.withSession { implicit session =>
+            if(MTable.getTables(sites.baseTableRow.tableName).list.isEmpty) sites.ddl.create
+            if(MTable.getTables(articles.baseTableRow.tableName).list.isEmpty) articles.ddl.create
+            if(MTable.getTables(links.baseTableRow.tableName).list.isEmpty) links.ddl.create
+            if(MTable.getTables(archives.baseTableRow.tableName).list.isEmpty) archives.ddl.create
+            if(MTable.getTables(linkArchive.baseTableRow.tableName).list.isEmpty) linkArchive.ddl.create
+            if(MTable.getTables(linkArticle.baseTableRow.tableName).list.isEmpty) linkArticle.ddl.create
+        }
+    }
+
+    def retrieveArchiveLinks(): ArchiveLinkData = {
+        val linkScraperStrategy = new NewsMaxLinkScraperStrategy()
+
+        val linkData: ArchiveLinkData = linkScraperStrategy.crawl()
+
+        linkData
+    }
+
+    def storeArchiveLinks(website: Site, linkData: ArchiveLinkData): Unit = {
+        val db = NewsScraper.stockitDatabase
+
+        db.withSession { implicit session =>
+            sites += website
+
+            val websiteId = (sites returning sites.map(_.id)) += website
+
+            linkData.archives foreach { each =>
+                val url = each._1
+                val archiveLinks = each._2
+
+                val archiveId = (archives returning archives.map(_.id)) += Archive(None, url, websiteId)
+
+                archiveLinks foreach { link =>
+                    val linkId = (links returning links.map(_.id)) += Link(None, link)
+
+                    linkArchive += (linkId, archiveId)
+                }
+            }
+        }
+    }
+
+    def fetchArchiveLinksFromDB(siteName: String): Seq[Archive] = {
+        val db = NewsScraper.stockitDatabase
+
+        val session: Session = db.createSession()
+
+        val foundArchives = sites
+            .filter({ _.name === siteName })
+            .run(session)
+            .map({ site =>
+                archives.filter({ _.siteId === site.id }).run(session)
+            })
+            .flatten
+
+        session.close()
+
+        foundArchives
+    }
+
+    def fetchLinks(archive: Archive): Seq[Link] = {
+        val db = NewsScraper.stockitDatabase
+
+        val session: Session = db.createSession()
+
+        val archiveLinks = linkArchive
+            .filter({
+                _.archiveId === archive.id
+            })
+            .run(session)
+            .map({ link =>
+                links.filter({ _.id === link._1 }).run(session)
+            })
+            .flatten
+
+        session.close()
+
+        archiveLinks
+    }
+
+    def processStoredArchiveLinks(siteName: String): Unit = {
+        val fetchedArchives = fetchArchiveLinksFromDB(siteName)
+
+        var numProcessed = 0
+
+        fetchedArchives foreach { archive =>
+            val fetchedLinks = fetchLinks(archive)
+
+            val pageData = pageScraper.crawl(fetchedLinks.map({ _.url }).toArray)
+
+            val db = NewsScraper.stockitDatabase
+
+            pageData.pages foreach { page =>
+                try {
+                    db.withSession { implicit session =>
+                        if( page.isInstanceOf[NewsMaxPage]) {
+                            val newsPage = page.asInstanceOf[NewsMaxPage]
+                            val articleId = (articles returning articles.map(_.id)) += ( if(newsPage == null) Article(None, null, null, null) else newsPage.tuple )
+
+                            val foundLinks: Seq[Link] = links.filter({ _.url === newsPage.url}).run
+                            if(foundLinks.size > 0) {
+                                val linkId = foundLinks(0).id.get
+
+                                linkArticle += (linkId, articleId)
+                            }
+                        }
+                    }
+                } catch {
+                    case e: Exception => {
+                        logger.error("Error saving page to db")
+                    }
+                }
+            }
+
+            logger.info(s"Stored archive page [$numProcessed] of [${fetchedArchives.size}]")
+
+            numProcessed += 1
+        }
+    }
+
+    def main(args: Array[String]): Unit = {
+
+        dropDatabases()
+        createDatabases()
+
+        val website = Site(None, name = "NewsMax")
+        storeArchiveLinks(website, retrieveArchiveLinks())
+
+        processStoredArchiveLinks("NewsMax")
     }
 
 }
