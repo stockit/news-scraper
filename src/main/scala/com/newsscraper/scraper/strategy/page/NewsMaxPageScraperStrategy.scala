@@ -26,7 +26,7 @@ class NewsMaxPageScraperStrategy extends PageScraperStrategy {
             this.synchronized {
                 numProcessed += 1
 
-//                logger.info(s"Processed archive link [$numProcessed] of [${pages.size}]]")
+                logger.info(s"Processed archive link [$numProcessed] of [${pages.size}]]")
             }
         }
 
@@ -61,11 +61,11 @@ class NewsMaxPageScraperStrategy extends PageScraperStrategy {
                     p <- div \ "p"
                 } yield p
 
-                val headText = headEl.text
-                val dateText = dateEl.text
-                val bodyText = paragraphEls.map({ _.text }).mkString(" ")
+                val headText = headEl.text.trim()
+                val dateText = dateEl.text.trim()
+                val bodyText = paragraphEls.map({ _.text }).mkString(" ").trim()
 
-                val date = dateFormat.parse(dateText.trim())
+                val date = dateFormat.parse(dateText)
 
                 incrementProcessed()
 
@@ -81,8 +81,9 @@ class NewsMaxPageScraperStrategy extends PageScraperStrategy {
             }
         }))
 
-        val pageData = Await.result(futureCalls, Duration.Inf)(0)
+        val result = Await.result(futureCalls, Duration.Inf)
 
+        val pageData = result.flatten
         PageData(pages = pageData.toList)
     }
 

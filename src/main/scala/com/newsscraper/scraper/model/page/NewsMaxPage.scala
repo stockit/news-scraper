@@ -10,6 +10,6 @@ import com.newsscraper.table.Article
  */
 case class NewsMaxPage(title: String, body: String, date: Date, url: String) extends Page {
     def tuple: Article = {
-        Article(None, this.title, Some(new SerialBlob(this.body.getBytes())), new java.sql.Date(date.getTime()))
+        Article(None, this.title, this.body, new java.sql.Date(date.getTime()))
     }
 }

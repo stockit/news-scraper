@@ -92,6 +92,27 @@ object Main {
         }
     }
 
+    def fetchArchiveLinksFromDB(siteName: String, archiveId: Int): Seq[Archive] = {
+        val db = NewsScraper.stockitDatabase
+
+        val session: Session = db.createSession()
+
+        val foundArchives = sites
+            .filter({ _.name === siteName })
+            .run(session)
+            .map({ site =>
+                archives
+                    .filter({ _.siteId === site.id })
+                    .filter({ _.id === archiveId })
+                    .run(session)
+            })
+            .flatten
+
+        session.close()
+
+        foundArchives
+    }
+
     def fetchArchiveLinksFromDB(siteName: String): Seq[Archive] = {
         val db = NewsScraper.stockitDatabase
 
@@ -130,8 +151,8 @@ object Main {
         archiveLinks
     }
 
-    def processStoredArchiveLinks(siteName: String): Unit = {
-        val fetchedArchives = fetchArchiveLinksFromDB(siteName)
+    def processStoredArchiveLinks(siteName: String, archiveId: Int): Unit = {
+        val fetchedArchives = fetchArchiveLinksFromDB(siteName, archiveId)
 
         var numProcessed = 0
 
@@ -142,43 +163,57 @@ object Main {
 
             val db = NewsScraper.stockitDatabase
 
-            pageData.pages foreach { page =>
+            val pages = pageData.pages.filter({_ != null})
+            var pendingLinkArticles: Seq[(Int, Int)] = Seq[(Int, Int)]()
+
+            pages foreach { page =>
                 try {
-                    db.withSession { implicit session =>
-                        if( page.isInstanceOf[NewsMaxPage]) {
-                            val newsPage = page.asInstanceOf[NewsMaxPage]
+                    val session = db.createSession()
+                    if( page.isInstanceOf[NewsMaxPage]) {
+                        val newsPage = page.asInstanceOf[NewsMaxPage]
+
+                        db.withSession { implicit session =>
                             val articleId = (articles returning articles.map(_.id)) += ( if(newsPage == null) Article(None, null, null, null) else newsPage.tuple )
 
-                            val foundLinks: Seq[Link] = links.filter({ _.url === newsPage.url}).run
+                            val foundLinks: Seq[Link] = fetchedLinks.filter({ _.url == newsPage.url })
                             if(foundLinks.size > 0) {
                                 val linkId = foundLinks(0).id.get
 
-                                linkArticle += (linkId, articleId)
+                                var xref: (Int, Int) = (linkId, articleId)
+
+                                pendingLinkArticles = pendingLinkArticles :+ xref
                             }
                         }
+
                     }
                 } catch {
                     case e: Exception => {
-                        logger.error("Error saving page to db")
+                        logger.error("Error saving page to db", e)
                     }
                 }
             }
 
-            logger.info(s"Stored archive page [$numProcessed] of [${fetchedArchives.size}]")
+            db.withSession { implicit session =>
+                linkArticle ++= pendingLinkArticles
+            }
 
             numProcessed += 1
+
+            logger.info(s"Stored archive page [$numProcessed] of [${fetchedArchives.size}]")
         }
     }
 
     def main(args: Array[String]): Unit = {
 
-        dropDatabases()
-        createDatabases()
+        // dropDatabases()
+        // createDatabases()
 
-        val website = Site(None, name = "NewsMax")
-        storeArchiveLinks(website, retrieveArchiveLinks())
+        // val website = Site(None, name = "NewsMax")
+        // storeArchiveLinks(website, retrieveArchiveLinks())
 
-        processStoredArchiveLinks("NewsMax")
+        (68 to 99) foreach {
+            processStoredArchiveLinks("NewsMax", _)
+        }
     }
 
 }
